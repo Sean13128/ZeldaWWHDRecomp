@@ -17,14 +17,25 @@ bool drc_window_shown();
 void show_drc_window(bool on);
 }  // namespace gfx
 
+
+namespace interp {
+bool enabled();
+void set_enabled(bool v);
+}
+
+namespace gx2 { uint64_t flips_presented(); }
+
 static NSWindow* g_tv;
+static double g_fps = 0;  // frames presented per second, measured over the last half second
 static NSString* const kTitle = @"The Legend of Zelda: The Wind Waker HD (recompiled)";
 
 // the TV title summarises the active options so a key press is visible without opening the menu
 static void update_title() {
     static const char* ao[3] = {"original", "centre fix", "centre + noise fix"};
-    [g_tv setTitle:[NSString stringWithFormat:@"%@ — AO: %s · AF: %s", kTitle, ao[gfx::ao_mode()],
-                                              gfx::aniso_enabled() ? "16x" : "game"]];
+    NSString* t = [NSString stringWithFormat:@"%@ \u2014 %.0f fps \u00b7 AO: %s%s \u00b7 AF: %s%s", kTitle, g_fps, ao[gfx::ao_mode()],
+                                             gfx::ao_hires_enabled() ? " + full-size depth" : "",
+                                             gfx::aniso_enabled() ? "16x" : "game", interp::enabled() ? " \u00b7 60 fps" : ""];
+    [g_tv setTitle:t];
 }
 
 @interface WWGraphicsMenu : NSObject <NSMenuItemValidation>
@@ -38,12 +49,14 @@ static void update_title() {
     input::set_pro_controller(item.tag == 1);
     gfx::show_drc_window(item.tag == 0);  // the GamePad window follows the controller choice
 }
+- (void)toggleInterp:(NSMenuItem*)item { interp::set_enabled(!interp::enabled()); update_title(); }
 - (void)toggleDrcWindow:(NSMenuItem*)item { gfx::show_drc_window(!gfx::drc_window_shown()); }
 - (void)toggleHires:(NSMenuItem*)item { gfx::set_ao_hires(!gfx::ao_hires_enabled()); update_title(); }
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     if (item.action == @selector(setAO:)) item.state = item.tag == gfx::ao_mode() ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(setController:))
         item.state = (item.tag == 1) == input::pro_controller() ? NSControlStateValueOn : NSControlStateValueOff;
+    if (item.action == @selector(toggleInterp:)) item.state = interp::enabled() ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(toggleDrcWindow:)) {
         item.state = gfx::drc_window_shown() ? NSControlStateValueOn : NSControlStateValueOff;
         return gfx::drc_window_available();
@@ -86,6 +99,7 @@ void install_menu(NSWindow* tv) {
     add(g, @"Full-size occlusion depth (M)", @selector(toggleHires:), @"M");
     [g addItem:[NSMenuItem separatorItem]];
     add(g, @"16x anisotropic filtering (N)", @selector(toggleAniso:), @"N");
+    add(g, @"60 fps: frame interpolation (6)", @selector(toggleInterp:), @"6");
     [g addItem:[NSMenuItem separatorItem]];
     add(g, @"Capture frame for debugging (P)", @selector(capture:), @"P");
     gfxItem.submenu = g;
@@ -101,6 +115,17 @@ void install_menu(NSWindow* tv) {
 
     NSApp.mainMenu = bar;
     update_title();
+    // live frame rate: presented frames over the last half second
+    [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer*) {
+        static uint64_t last = gx2::flips_presented();
+        static CFAbsoluteTime t0 = CFAbsoluteTimeGetCurrent();
+        uint64_t n = gx2::flips_presented();
+        CFAbsoluteTime t = CFAbsoluteTimeGetCurrent();
+        if (t > t0) g_fps = (double)(n - last) / (t - t0);
+        last = n;
+        t0 = t;
+        update_title();
+    }];
 }
 
 // single-key shortcuts from the game window; true if the key was used
@@ -109,6 +134,7 @@ bool menu_hotkey(uint16_t code) {
     case kVK_ANSI_O: set_ao_mode((ao_mode() + 1) % 3); break;
     case kVK_ANSI_N: set_aniso(!aniso_enabled()); break;
     case kVK_ANSI_M: set_ao_hires(!ao_hires_enabled()); break;
+    case kVK_ANSI_6: interp::set_enabled(!interp::enabled()); break;
     case kVK_ANSI_P: case kVK_F12: request_capture(); return true;
     default: return false;
     }

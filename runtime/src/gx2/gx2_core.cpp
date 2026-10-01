@@ -293,7 +293,9 @@ using namespace gx2;
 // flip executes on the first vsync that is at least `swap interval` vsyncs after the previous flip.
 // Games pace themselves by waiting for vsync until their flips have executed.
 static uint64_t g_swap_count = 0, g_flip_count = 0;
-static uint32 g_swap_interval = 1;
+namespace gx2 { uint64_t flips_presented() { return __atomic_load_n(&g_flip_count, __ATOMIC_RELAXED); } }  // live fps in the title
+static uint32 g_swap_interval = 1;  // as set by the game (frame interpolation halves it)
+namespace interp { uint32_t effective_swap_interval(uint32_t game); }
 static std::mutex g_flip_mutex;
 static const auto g_vsync_epoch = std::chrono::steady_clock::now();
 static constexpr std::chrono::nanoseconds kVsyncPeriod(16683333);  // 59.94 Hz
@@ -309,7 +311,7 @@ static uint64_t vsync_index() { return (std::chrono::steady_clock::now() - g_vsy
 static void update_flips() {  // g_flip_mutex held
     uint64_t now = vsync_index();
     while (!g_pending_flips.empty()) {
-        uint64_t at = std::max(g_pending_flips.front().vsync + 1, g_last_flip_vsync + g_swap_interval);
+        uint64_t at = std::max(g_pending_flips.front().vsync + 1, g_last_flip_vsync + interp::effective_swap_interval(g_swap_interval));
         if (at > now || gfx::frames_completed() < g_pending_flips.front().swap) break;
         at = now;
         g_pending_flips.pop_front();
@@ -424,6 +426,21 @@ HLE(gx2, GX2DrawDone) {
     ret(c, 1);
 }
 HLE(gx2, GX2SwapScanBuffers) {
+    // debug: WWHD_TRACE_SWAP=n logs the guest call chain of the first n swaps
+    static int trace = getenv("WWHD_TRACE_SWAP") ? atoi(getenv("WWHD_TRACE_SWAP")) : 0;
+    if (trace > 0) {
+        trace--;
+        char buf[256];
+        int n = snprintf(buf, sizeof buf, "[gx2] swap from lr=%08X", c->lr);
+        uint32_t sp = c->r[1];
+        for (int i = 0; i < 8 && sp; i++) {
+            uint32_t prev = ld32(sp);
+            if (!prev || prev <= sp) break;
+            n += snprintf(buf + n, sizeof buf - n, " <- %08X", ld32(prev + 4));
+            sp = prev;
+        }
+        LOG("%s", buf);
+    }
     emit_host(OP_SWAP, {});
     {
         std::lock_guard<std::mutex> lk(g_flip_mutex);

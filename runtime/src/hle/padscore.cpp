@@ -4,6 +4,8 @@
 #include "../runtime.h"
 #include "../input.h"
 
+namespace interp { bool repeat_input(); }
+
 namespace {
 constexpr int32_t kWpadErrNone = 0, kWpadErrNoController = -1;
 constexpr int32_t kKpadErrNone = 0, kKpadErrNoController = -2;
@@ -58,7 +60,9 @@ HLE(padscore, KPADReadEx) {
         return;
     }
     static uint32_t last = 0;
-    input::PadState p = input::read();
+    static input::PadState last_p;
+    input::PadState p = interp::repeat_input() ? last_p : input::read();  // see interp.cpp
+    last_p = p;
     uint32_t hold = pro_buttons(p.buttons);
     memset(mem::ptr(st), 0, 0xF0);
     st8(st + 0x5C, kDevURCC);     // devType

@@ -1,0 +1,10 @@
+# Game functions routed through runtime hooks (runtime/src/interp.cpp). Address = function entry.
+# Frame interpolation: the main loop runs 60 times a second; game logic only on every other pass.
+025F172C  # main loop body (frame counter, audio, fapGm_Execute)
+025DE788  # fpcEx_Handler: execute all processes (logic)
+025DE024  # fpcDt_Handler: process deletion
+025E0EE4  # fpcPi_Handler: priority changes (returns success)
+025DDCEC  # fpcCt_Handler: process creation (returns success)
+025D42C4  # fapGm_After: scene / transition / camera management
+0200E6EC  # cCt_Counter: frame counters
+024FFC40  # camera_draw: blended camera on logic passes
