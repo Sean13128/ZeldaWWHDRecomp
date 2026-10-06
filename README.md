@@ -731,7 +731,9 @@ and the renderer are remembered in `~/Library/Application Support/wwhd/display.p
   "Uncapped" on (no frame limit, no vsync; the game runs faster than real time);
   `WWHD_SHADOW_SCALE=n` gives the shadow maps their own resolution factor; `WWHD_STATE_DIR=<dir>`
   stores save states elsewhere; `WWHD_RUMBLE=0|1` (SDL builds) start value for Controls > Rumble (overrides the remembered
-  choice); `WWHD_LOG_RUMBLE=1` logs the game's motor requests and what the motors do.
+  choice); `WWHD_LOG_RUMBLE=1` logs the game's motor requests and what the motors do;
+  `WWHD_STRICT_MUL=0` turns off the GPU's 0×anything=0 multiply rule in shaders (on by default, as in
+  Cemu; off only for performance comparisons, it brings back e.g. the black letter in the Rito mail sorting game).
 - Crashes and game halts write `captures/crash-<time>.log` (crash address, registers, the guest call
   chain, a host backtrace and the last log lines; useful for bug reports, it contains only addresses,
   function names, the file names of the program's modules and log text). A crash address outside the
